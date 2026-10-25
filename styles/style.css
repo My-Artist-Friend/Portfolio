@@ -68,7 +68,7 @@ main, .site-footer { max-width: 62rem; margin: 0 auto; padding: 0 1rem; }
 
 .section { padding: 1.25rem 0; border-top: 1px solid var(--line); }
 .section h2 { font-size: 1.35rem; margin: 0 0 .5rem; letter-spacing: -.01em; }
-.section > p { max-width: 38rem; }
+.section > p { max-width: 100%; }
 
 .skills { list-style: none; display: flex; flex-wrap: wrap; gap: .5rem; padding: 0; margin: .75rem 0 0; }
 .skills li {
