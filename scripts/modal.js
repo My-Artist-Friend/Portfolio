@@ -1,5 +1,6 @@
-// Project popup: click a project link that points to an .html file,
-// and that file is fetched and shown inside a modal dialog.
+// Project popup: click anywhere on a project card (its link must point to an .html file).
+// The card shows a small loading effect while the page AND its images load,
+// and the popup opens only when everything is ready.
 (function () {
   const dialog = document.createElement("dialog");
   dialog.id = "project-modal";
@@ -12,6 +13,7 @@
   const body = dialog.querySelector(".modal-body");
   const cache = {};
   let latest = 0;
+  let busyCard = null;
 
   // The popup size is calculated from the screen size
   function size() {
@@ -21,53 +23,83 @@
     dialog.style.height = Math.round(h) + "px";
   }
 
-  async function openProject(file) {
-    const id = ++latest;
-    size();
-    body.textContent = "Loading…";
-    document.body.classList.add("modal-open");
-    if (!dialog.open) dialog.showModal(); // showModal() blocks the page behind it
-
-    let html = null;
-    let errorText = null;
+  async function fetchHtml(file) {
+    if (cache[file]) return cache[file];
     const ctrl = new AbortController();
     const timer = setTimeout(function () { ctrl.abort(); }, 15000);
     try {
-      if (!cache[file]) {
-        const res = await fetch(file, { signal: ctrl.signal });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        cache[file] = await res.text();
-      }
-      html = cache[file];
+      const res = await fetch(file, { signal: ctrl.signal });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      cache[file] = await res.text();
+      return cache[file];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Waits until every <img> inside the fetched HTML has loaded (gives up after 10 s)
+  function preloadImages(html) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html; // images inside a template don't load by themselves
+    const jobs = Array.from(tpl.content.querySelectorAll("img")).map(function (img) {
+      return new Promise(function (resolve) {
+        const src = img.getAttribute("src");
+        if (!src) return resolve();
+        const probe = new Image();
+        probe.onload = resolve;
+        probe.onerror = resolve; // a broken image shouldn't block the popup
+        probe.src = src;
+      });
+    });
+    const limit = new Promise(function (resolve) { setTimeout(resolve, 10000); });
+    return Promise.race([Promise.all(jobs), limit]);
+  }
+
+  async function openProject(file, card) {
+    const id = ++latest;
+    if (busyCard) busyCard.classList.remove("is-loading");
+    busyCard = card;
+    card.classList.add("is-loading");
+
+    let html = null;
+    let errorText = null;
+    try {
+      html = await fetchHtml(file);
+      await preloadImages(html);
     } catch (err) {
       console.error("Project load failed:", file, err);
       if (err.name === "AbortError") {
-        errorText = "The server didn’t answer for “" + file + "” within 15 seconds. " +
-                    "This usually points to the preview server, not the code. Try again.";
+        errorText = "The server didn’t answer for “" + file + "” within 15 seconds. Try again.";
       } else {
         errorText = "Couldn’t load “" + file + "” (" + err.message + "). " +
                     "Check that the file exists at this exact path and name.";
       }
-    } finally {
-      clearTimeout(timer);
     }
 
     if (id !== latest) return; // a newer click took over
+    card.classList.remove("is-loading");
+    busyCard = null;
+
+    size();
+    document.body.classList.add("modal-open");
     if (errorText) body.textContent = errorText;
     else body.innerHTML = html;
+    if (!dialog.open) dialog.showModal(); // showModal() blocks the page behind it
     void dialog.offsetHeight; // forces the browser to redraw the popup right away
     body.scrollTop = 0;
     body.focus();
   }
 
+  // Capture phase + stopPropagation: the page-wide fullscreen tap doesn't fire at the same moment
   document.addEventListener("click", function (e) {
-    const link = e.target.closest("#project-list a");
-    if (!link) return;
-    const file = link.getAttribute("href");
-    if (!file || !/\.html?$/i.test(file)) return; // normal links work as usual
+    const card = e.target.closest("#project-list .project");
+    if (!card) return;
+    const link = card.querySelector("a");
+    const file = link && link.getAttribute("href");
+    if (!file || !/\.html?$/i.test(file)) return; // cards without an .html link do nothing special
     e.preventDefault();
-    e.stopPropagation(); // keeps the page-wide fullscreen tap from firing at the same moment
-    openProject(file);
+    e.stopPropagation();
+    if (card !== busyCard) openProject(file, card);
   }, true);
 
   dialog.querySelector(".modal-close").addEventListener("click", function () {
