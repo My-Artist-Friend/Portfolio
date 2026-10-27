@@ -51,7 +51,7 @@ document.getElementById("contact-form").addEventListener("submit", function(e) {
   const email = this.email.value;
   const subject = encodeURIComponent("Message from " + name);
   const body = encodeURIComponent(message + "\n\n" + email);
-  window.location.href = "mailto:mohammadrashad@gmail.com?subject=" + subject + "&body=" + body;
+  window.location.href = "mailto:mohammmadrashad@gmail.com?subject=" + subject + "&body=" + body;
   document.getElementById("form-status").textContent = "Opening your email app…";
 });
 
